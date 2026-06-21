@@ -31,7 +31,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Verificar build da aplicação
-        run: python -c "from app.main import app; print('Build OK: aplicação importada com sucesso')"
+        run: python -c "from app.main import app; print('Build OK')"
 
       - name: Executar testes unitários
         run: python -m pytest tests/unit -v
