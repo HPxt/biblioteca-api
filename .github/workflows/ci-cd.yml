@@ -1,0 +1,108 @@
+name: CI/CD Pipeline - Biblioteca API
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ---------------------------------------------------------------------
+  # ETAPA 1: COMMIT STAGE
+  # Build da aplicação + Testes Unitários + Testes de Integração
+  # ---------------------------------------------------------------------
+  commit-stage:
+    name: "1. Commit Stage (Build + Testes Unitários + Integração)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências (build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verificar build da aplicação
+        run: python -c "from app.main import app; print('Build OK: aplicação importada com sucesso')"
+
+      - name: Executar testes unitários
+        run: python -m pytest tests/unit -v
+
+      - name: Executar testes de integração
+        run: python -m pytest tests/integration -v
+
+      - name: Gerar relatório de cobertura
+        run: python -m pytest tests/unit tests/integration --cov=app --cov-report=term-missing
+
+  # ---------------------------------------------------------------------
+  # ETAPA 2: ACCEPTANCE TEST STAGE
+  # Testes de aceitação end-to-end via API HTTP
+  # ---------------------------------------------------------------------
+  acceptance-stage:
+    name: "2. Acceptance Test Stage"
+    needs: commit-stage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Executar testes de aceitação
+        run: python -m pytest tests/acceptance -v
+
+  # ---------------------------------------------------------------------
+  # ETAPA 3: RELEASE STAGE
+  # Build da imagem Docker e publicação no GitHub Container Registry
+  # ---------------------------------------------------------------------
+  release-stage:
+    name: "3. Release Stage (Docker Build + Push)"
+    needs: acceptance-stage
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      - name: Resumo da implantação
+        run: |
+          echo "Imagem publicada com sucesso em:"
+          echo "ghcr.io/${{ github.repository }}:latest"
